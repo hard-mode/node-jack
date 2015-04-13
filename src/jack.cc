@@ -1,3 +1,5 @@
+#pragma GCC diagnostic ignored "-Wwrite-strings" // mmm, pragma!
+
 #include <nan.h>
 #include <node.h>
 #include <jack/jack.h>
@@ -20,59 +22,63 @@ class Client : public ObjectWrap {
 
     static NAN_METHOD(New) {
       NanScope();
-      Client * obj  = new Client(*NanUtf8String(args[0]));
+      Client * obj = new Client(args.This(), *NanUtf8String(args[0]));
       obj->Wrap(args.This());
       NanReturnValue(args.This());
     }
 
     jack_client_t * client;
 
-    Client (const char * name) {
+    Local<Object> _this;
+
+    Client (Local<Object> self, const char * name) {
+
+      _this = self;
+
       client = jack_client_open(name, JackNullOption, NULL);
-      jack_set_client_registration_callback(
-        client, client_registered, this);
-      jack_set_port_registration_callback(
-        client, port_registered, this);
+
+      jack_set_client_registration_callback ( client
+                                            , client_registration_callback
+                                            , this );
+
+      jack_set_port_registration_callback ( client
+                                          , port_registration_callback
+                                          , this );
+
       jack_activate(client);
+
     }
 
     ~Client () {
       jack_client_close(client);
     }
 
-    static void client_registered
+    static void client_registration_callback
       ( const char * name
       , int          reg
       , void       * client_ptr)
     {
-      Client* client = static_cast<Client*> client_ptr;
-      if (reg) {
-        client->emitEvent("client-registered", name); 
-      } else {
-        client->emitEvent("client-unregistered", name); 
-      }
+      //v8::FunctionCallbackInfo<v8::Value> argv[2] =
+      Handle<Value> argv[2] =
+      { NanNew(reg ? "client-registered"
+                   : "client-unregistered")
+      , NanNew(name) };
+      static_cast<Client*>(client_ptr)->emitEvent(argv);
     }
 
-    static void port_registered
+    static void port_registration_callback
       ( jack_port_id_t port
       , int            reg
       , void         * client_ptr)
     {
-      Client* client = static_cast<Client*> client_ptr;
-      if (reg) {
-        client->emitEvent("port-registered"); 
-      } else {
-        client->emitEvent("port-unregistered"); 
-      }
+      Handle<Value> argv[2] =
+      { NanNew(reg ? "port-registered"
+                   : "port-unregistered")
+      , NanUndefined() };
+      static_cast<Client*>(client_ptr)->emitEvent(argv);
     }
 
   public:
-
-    NAN_METHOD (emitEvent) {
-      NanScope();
-      fprintf(stderr, "EVENT");
-      NanReturnUndefined();
-    }
 
     static void Init() {
       Local<FunctionTemplate> t =
@@ -80,6 +86,12 @@ class Client : public ObjectWrap {
       NanAssignPersistent(constructor, t);
       t->SetClassName(NanNew("Client"));
       t->InstanceTemplate()->SetInternalFieldCount(1);
+    }
+
+    void emitEvent (Handle<Value> * argv) {
+      NanScope();
+      NanMakeCallback(_this, "emit", 2, argv);
+      NanReturnUndefined();
     }
 
 };

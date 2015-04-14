@@ -74,9 +74,10 @@ class Client : public ObjectWrap {
       Client * c = static_cast<Client*>(baton->data);
       NanScope();
 
-      Local<Value>   f   = NanNew(c->self)->Get(NanNew("emit"));
+      Local<Value> f = NanNew(c->self)->Get(NanNew("emit"));
       Local<Context> ctx = NanGetCurrentContext();
-      Local<Function>::Cast(f)->Call(ctx->Global(), 0, NULL);
+      Local<Value> argv[] = { NanNew("foo"), NanUndefined() };
+      Local<Function>::Cast(f)->Call(ctx->Global(), 2, argv);
 
       delete baton;
       c->baton = NULL;

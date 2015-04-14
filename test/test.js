@@ -1,4 +1,4 @@
-var jack = require('../build/Release/jack.node');
+var jack = require('../index.js');
 console.log("1. JACK", jack);
 
 console.log("2. Class", jack.Client)

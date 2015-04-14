@@ -2,10 +2,12 @@
 
 #include <nan.h>
 #include <node.h>
+#include <uv.h>
 #include <jack/jack.h>
 //#include "jack.h"
 
 using node::ObjectWrap;
+using v8::Context;
 using v8::Function;
 using v8::FunctionTemplate;
 using v8::Handle;
@@ -23,18 +25,19 @@ class Client : public ObjectWrap {
 
     // node constructor
 
-    Persistent<Object> self;
+    Persistent<Object>  self;
 
     static NAN_METHOD(New) {
       NanScope();
       Local<Object> self = args.This();
-      Client * obj = new Client(* NanUtf8String(args[0]));
-      obj->Wrap(self);
-      NanAssignPersistent(obj->self, self);
+      Client * c = new Client(* NanUtf8String(args[0]));
+      c->Wrap(self);
+      NanAssignPersistent(c->self, self);
       NanReturnValue(self);
     }
 
-    // actual constructor and jack connection
+    // native constructor and destructor
+    // handles setup and teardown of jack client
 
     jack_client_t * client;
 
@@ -54,25 +57,66 @@ class Client : public ObjectWrap {
 
     }
 
-    // destructor
-
     ~Client () {
       jack_client_close(client);
     }
 
-    // static callbacks for jack
+    // static callbacks for jack hook into libuv
+
+    uv_work_t * baton;
+    uv_sem_t    semaphore;
+    static void uv_work_plug (uv_work_t * task) {}
+
+    static void uv_emit
+      ( uv_work_t * baton
+      , int status )
+    {
+      Client * c = static_cast<Client*>(baton->data);
+      NanScope();
+
+      Local<Value>   f   = NanNew(c->self)->Get(NanNew("emit"));
+      Local<Context> ctx = NanGetCurrentContext();
+      Local<Function>::Cast(f)->Call(ctx->Global(), 0, NULL);
+
+      delete baton;
+      c->baton = NULL;
+      uv_sem_post(&(c->semaphore));
+      return;
+
+      //Local<Function>::Cast(f)->Call(
+        //NanGetCurrentContext(), 0, NULL);
+      //v8::Handle<v8::Function>::Cast(value)
+      //NanNew(c->self)->Get(NanNew("emit"))->Call(
+      return;
+    }
 
     static void client_registration_callback
       ( const char * name
       , int          reg
       , void       * client_ptr)
     {
+
       Client * c = static_cast<Client*>(client_ptr);
-      if (reg) {
-        c->onClientRegistered(name);
-      } else {
-        c->onClientUnregistered(name);
+
+      if (c->baton) {
+        uv_sem_wait(&(c->semaphore));
+        uv_sem_destroy(&(c->semaphore));
       }
+
+      c->baton = new uv_work_t();
+      if (uv_sem_init(&(c->semaphore), 0) < 0) return;
+      c->baton->data = client_ptr;
+      uv_queue_work(
+        uv_default_loop(), c->baton,
+        Client::uv_work_plug, c->uv_emit);
+      uv_sem_wait(&(c->semaphore));
+      uv_sem_destroy(&(c->semaphore));
+
+      //if (reg) {
+        //c->onClientRegistered(name);
+      //} else {
+        //c->onClientUnregistered(name);
+      //}
     }
 
     static void port_registration_callback
@@ -104,7 +148,12 @@ class Client : public ObjectWrap {
     // and should be replaced with a more robust mechanism
 
     void onClientRegistered (const char * name) {
+      //NanScope();
+      fprintf(stderr, "isfn %i", NanNew(self)->Get(NanNew("emit"))->IsFunction());
+      //NanAsyncQueueWorker(new EmitWorker(
+        //NanNew(self)->Get(NanNew("emit"))->As<Function>()));
       fprintf(stderr, "\nclient registered %s", name);
+      //NanReturnUndefined();
     }
 
     void onClientUnregistered (const char * name) {

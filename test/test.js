@@ -19,8 +19,10 @@ client.on('client-unregistered', function () {
   console.log("Client unregistered", arguments)
 });
 
-client.on('port-registered', function () {
-  console.log("Port registered", arguments)
+client.on('port-registered', function (port) {
+  console.log("Port registered", arguments);
+  client.disconnect(port, "system:playback_1");
+  client.disconnect(port, "system:playback_2");
 });
 
 client.on('port-unregistered', function () {

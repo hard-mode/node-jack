@@ -61,7 +61,23 @@ class Client : public ObjectWrap {
       jack_client_close(client);
     }
 
-    // static callbacks for jack hook into libuv
+    // port connect and disconnect methods
+    static NAN_METHOD(Connect) {
+      NanScope();
+      Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
+      jack_connect(c->client, *NanUtf8String(args[0]), *NanUtf8String(args[1]));
+      NanReturnUndefined();
+    }
+
+    static NAN_METHOD(Disconnect) {
+      NanScope();
+      Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
+      jack_disconnect(c->client, *NanUtf8String(args[0]), *NanUtf8String(args[1]));
+      NanReturnUndefined();
+    }
+
+    // static callbacks for jack events
+    // manually hooking into libuv event loop
 
     struct event_args {
       Client     * c;
@@ -74,6 +90,7 @@ class Client : public ObjectWrap {
 
     static void uv_work_plug (uv_work_t * task) {}
 
+    template <typename T>
     static void emit_event
       ( uv_work_t * baton
       , int         status )
@@ -82,7 +99,7 @@ class Client : public ObjectWrap {
 
       NanScope();
       Local<Object> self   = NanNew(args->c->self);
-      Local<Value>  argv[] = { NanNew(args->evt), NanNew((char *)args->arg) };
+      Local<Value>  argv[] = { NanNew(args->evt), NanNew((T)args->arg) };
       Local<Function>::Cast(self->Get(NanNew("emit")))->Call(self, 2, argv);
 
       delete baton;
@@ -90,10 +107,11 @@ class Client : public ObjectWrap {
       uv_sem_post(&(args->c->semaphore));
     }
 
+    template <typename T>
     static void callback
-      ( void           * client_ptr
-      , const char     * event
-      , void           * arg)
+      ( void       * client_ptr
+      , const char * event
+      , void       * arg)
     {
       Client * c = static_cast<Client*>(client_ptr);
       if (c->baton) {
@@ -105,9 +123,7 @@ class Client : public ObjectWrap {
 
       event_args args = { c, event, arg };
       c->baton->data = (void *)(&args);
-      uv_queue_work(
-        uv_default_loop(), c->baton,
-        Client::uv_work_plug, c->emit_event);
+      uv_queue_work(uv_default_loop(), c->baton, uv_work_plug, emit_event<T>);
 
       uv_sem_wait(&(c->semaphore));
       uv_sem_destroy(&(c->semaphore));
@@ -118,7 +134,7 @@ class Client : public ObjectWrap {
       , int          reg
       , void       * client_ptr )
     {
-      callback
+      callback<char *>
         ( client_ptr
         , reg ? "client-registered" : "client-unregistered"
         , const_cast<char *>(name));
@@ -129,7 +145,7 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr )
     {
-      callback
+      callback<char *>
         ( client_ptr
         , reg ? "port-registered" : "port-unregistered"
         , const_cast<char *>(jack_port_name(jack_port_by_id(
@@ -145,6 +161,8 @@ class Client : public ObjectWrap {
       NanAssignPersistent(constructor, t);
       t->SetClassName(NanNew("Client"));
       t->InstanceTemplate()->SetInternalFieldCount(1);
+      NODE_SET_PROTOTYPE_METHOD(t, "connect",    Connect);
+      NODE_SET_PROTOTYPE_METHOD(t, "disconnect", Disconnect);
     }
 
 };

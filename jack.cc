@@ -63,7 +63,7 @@ class Client : public ObjectWrap {
 
     // static callbacks for jack hook into libuv
 
-    struct uv_callback_args {
+    struct event_args {
       Client     * c;
       const char * evt;
       void       * arg;
@@ -74,11 +74,11 @@ class Client : public ObjectWrap {
 
     static void uv_work_plug (uv_work_t * task) {}
 
-    static void uv_emit
+    static void emit_event
       ( uv_work_t * baton
       , int         status )
     {
-      uv_callback_args * args = (uv_callback_args *) baton->data;
+      event_args * args = (event_args *) baton->data;
 
       NanScope();
       Local<Object> self   = NanNew(args->c->self);
@@ -103,11 +103,11 @@ class Client : public ObjectWrap {
       c->baton = new uv_work_t();
       if (uv_sem_init(&(c->semaphore), 0) < 0) return;
 
-      uv_callback_args args = { c, event, arg };
+      event_args args = { c, event, arg };
       c->baton->data = (void *)(&args);
       uv_queue_work(
         uv_default_loop(), c->baton,
-        Client::uv_work_plug, c->uv_emit);
+        Client::uv_work_plug, c->emit_event);
 
       uv_sem_wait(&(c->semaphore));
       uv_sem_destroy(&(c->semaphore));
@@ -128,7 +128,7 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr )
     {
-      callback(client_ptr
+      callback( client_ptr
               , reg ? "port-registered" : "port-unregistered"
               , NULL);
     }

@@ -29,6 +29,14 @@ client.on('port-unregistered', function () {
   console.log("Port registered", arguments)
 });
 
+client.on('connect', function () {
+  console.log("Ports connected", arguments)
+});
+
+client.on('disconnect', function () {
+  console.log("Ports disconnected", arguments)
+});
+
 console.log("5. Callbacks");
 
 require('child_process').spawn('jack_simple_client');

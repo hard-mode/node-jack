@@ -53,6 +53,10 @@ class Client : public ObjectWrap {
                                           , port_registration_callback
                                           , this );
 
+      jack_set_port_connect_callback ( client
+                                     , port_connect_callback
+                                     , this );
+
       jack_activate(client);
 
     }
@@ -150,6 +154,26 @@ class Client : public ObjectWrap {
         , reg ? "port-registered" : "port-unregistered"
         , const_cast<char *>(jack_port_name(jack_port_by_id(
             static_cast<Client*>(client_ptr)->client, port))));
+    }
+
+    static void port_connect_callback
+      ( jack_port_id_t a
+      , jack_port_id_t b
+      , int            conn
+      , void         * client_ptr )
+    {
+
+      const char * argv[2] =
+        { const_cast<char *>(jack_port_name(jack_port_by_id(
+            static_cast<Client*>(client_ptr)->client, a)))
+        , const_cast<char *>(jack_port_name(jack_port_by_id(
+            static_cast<Client*>(client_ptr)->client, b))) };
+
+      callback<char **>
+        ( client_ptr
+        , conn ? "connect" : "disconnect"
+        , argv);
+
     }
 
   public:

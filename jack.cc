@@ -63,38 +63,39 @@ class Client : public ObjectWrap {
 
     // static callbacks for jack hook into libuv
 
+    struct uv_callback_args {
+      Client     * c;
+      const char * evt;
+      void       * arg;
+    };
+
     uv_work_t * baton;
     uv_sem_t    semaphore;
+
     static void uv_work_plug (uv_work_t * task) {}
 
     static void uv_emit
       ( uv_work_t * baton
       , int status )
     {
-      Client * c = static_cast<Client*>(baton->data);
-      NanScope();
+      uv_callback_args * args = (uv_callback_args *) baton->data;
 
-      Local<Value> f = NanNew(c->self)->Get(NanNew("emit"));
-      Local<Context> ctx = NanGetCurrentContext();
-      Local<Value> argv[] = { NanNew("foo"), NanUndefined() };
-      Local<Function>::Cast(f)->Call(ctx->Global(), 2, argv);
+      NanScope();
+      Local<Object> self = NanNew(args->c->self);
+      Local<Value> f = self->Get(NanNew("emit"));
+      Local<Value> argv[] = { NanNew(args->evt), NanUndefined() };
+      Local<Function>::Cast(f)->Call(self, 2, argv);
 
       delete baton;
-      c->baton = NULL;
-      uv_sem_post(&(c->semaphore));
-      return;
-
-      //Local<Function>::Cast(f)->Call(
-        //NanGetCurrentContext(), 0, NULL);
-      //v8::Handle<v8::Function>::Cast(value)
-      //NanNew(c->self)->Get(NanNew("emit"))->Call(
+      args->c->baton = NULL;
+      uv_sem_post(&(args->c->semaphore));
       return;
     }
 
     static void client_registration_callback
       ( const char * name
       , int          reg
-      , void       * client_ptr)
+      , void       * client_ptr )
     {
 
       Client * c = static_cast<Client*>(client_ptr);
@@ -106,31 +107,25 @@ class Client : public ObjectWrap {
 
       c->baton = new uv_work_t();
       if (uv_sem_init(&(c->semaphore), 0) < 0) return;
-      c->baton->data = client_ptr;
+
+      uv_callback_args args = { c, reg ? "client-registered"
+                                       : "client-unregistered", NULL };
+      c->baton->data = (void *)(&args);
       uv_queue_work(
         uv_default_loop(), c->baton,
         Client::uv_work_plug, c->uv_emit);
+
       uv_sem_wait(&(c->semaphore));
       uv_sem_destroy(&(c->semaphore));
 
-      //if (reg) {
-        //c->onClientRegistered(name);
-      //} else {
-        //c->onClientUnregistered(name);
-      //}
     }
 
     static void port_registration_callback
       ( jack_port_id_t port
       , int            reg
-      , void         * client_ptr)
+      , void         * client_ptr )
     {
-      Client * c = static_cast<Client*>(client_ptr);
-      if (reg) {
-        c->onPortRegistered();
-      } else {
-        c->onPortUnregistered();
-      }
+      fprintf(stderr, "port reg callback");
     }
 
   public:
@@ -142,41 +137,6 @@ class Client : public ObjectWrap {
       NanAssignPersistent(constructor, t);
       t->SetClassName(NanNew("Client"));
       t->InstanceTemplate()->SetInternalFieldCount(1);
-    }
-
-    // event emit intermediaries
-    // need to be public for static_casted clients to work
-    // and should be replaced with a more robust mechanism
-
-    void onClientRegistered (const char * name) {
-      //NanScope();
-      fprintf(stderr, "isfn %i", NanNew(self)->Get(NanNew("emit"))->IsFunction());
-      //NanAsyncQueueWorker(new EmitWorker(
-        //NanNew(self)->Get(NanNew("emit"))->As<Function>()));
-      fprintf(stderr, "\nclient registered %s", name);
-      //NanReturnUndefined();
-    }
-
-    void onClientUnregistered (const char * name) {
-      fprintf(stderr, "\nclient unregistered %s", name);
-    }
-
-    void onPortRegistered () {
-      fprintf(stderr, "\nport registered");
-    }
-
-    void onPortUnregistered () {
-      fprintf(stderr, "\nport unregistered");
-    }
-
-    void emitEvent (const char * name, const char * arg) {
-      fprintf(stderr, "\nemit %s %s", name, arg);
-      //Local<Object> yaze = NanNew(self);
-      //if (yaze->Has(NanNew("onport"))
-      //&& ( name == "port-registered" ||
-           //name == "port-unregistered")) {
-        //NanMakeCallback(yaze, yaze->Get("onport"), 0, NULL);
-      //}
     }
 
 };

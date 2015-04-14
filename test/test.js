@@ -9,9 +9,11 @@ var client = new jack.Client('test');
 console.log("4. Instance", client);
 
 process.stdin.resume();
-client.onclient = function () { console.log("CLIENT!") }
-client.onport   = function () { console.log("PORT!")   }
-client.on('foo', function () { console.log("DA FOO") })
-console.log("5. onclient, onport");
+function cb () { console.log ("CALLBACK", this, arguments ) }
+client.on('client-registered',   cb);
+client.on('client-unregistered', cb);
+client.on('port-registered',     cb);
+client.on('port-unregistered',   cb);
+console.log("5. Callbacks");
 
 require('child_process').spawn('jack_simple_client');

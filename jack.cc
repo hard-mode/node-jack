@@ -30,8 +30,6 @@ class Client : public ObjectWrap {
       Local<Object> self = args.This();
       Client * obj = new Client(* NanUtf8String(args[0]));
       obj->Wrap(self);
-      self->Set(NanNew("onclient"), NanUndefined());
-      self->Set(NanNew("onport"),   NanUndefined());
       NanAssignPersistent(obj->self, self);
       NanReturnValue(self);
     }
@@ -69,9 +67,12 @@ class Client : public ObjectWrap {
       , int          reg
       , void       * client_ptr)
     {
-      static_cast<Client*>(client_ptr)->emitEvent(
-        reg ? "client-registered"
-            : "client-unregistered", name);
+      Client * c = static_cast<Client*>(client_ptr);
+      if (reg) {
+        c->onClientRegistered(name);
+      } else {
+        c->onClientUnregistered(name);
+      }
     }
 
     static void port_registration_callback
@@ -79,9 +80,12 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr)
     {
-      static_cast<Client*>(client_ptr)->emitEvent(
-        reg ? "port-registered"
-            : "port-unregistered", "");
+      Client * c = static_cast<Client*>(client_ptr);
+      if (reg) {
+        c->onPortRegistered();
+      } else {
+        c->onPortUnregistered();
+      }
     }
 
   public:
@@ -95,11 +99,34 @@ class Client : public ObjectWrap {
       t->InstanceTemplate()->SetInternalFieldCount(1);
     }
 
-    // event emit intermediary
-    // needs to be public for static_casted clients to work
+    // event emit intermediaries
+    // need to be public for static_casted clients to work
+    // and should be replaced with a more robust mechanism
+
+    void onClientRegistered (const char * name) {
+      fprintf(stderr, "\nclient registered %s", name);
+    }
+
+    void onClientUnregistered (const char * name) {
+      fprintf(stderr, "\nclient unregistered %s", name);
+    }
+
+    void onPortRegistered () {
+      fprintf(stderr, "\nport registered");
+    }
+
+    void onPortUnregistered () {
+      fprintf(stderr, "\nport unregistered");
+    }
 
     void emitEvent (const char * name, const char * arg) {
-      fprintf(stderr, "emit %s %s", name, arg);
+      fprintf(stderr, "\nemit %s %s", name, arg);
+      //Local<Object> yaze = NanNew(self);
+      //if (yaze->Has(NanNew("onport"))
+      //&& ( name == "port-registered" ||
+           //name == "port-unregistered")) {
+        //NanMakeCallback(yaze, yaze->Get("onport"), 0, NULL);
+      //}
     }
 
 };

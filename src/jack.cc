@@ -6,6 +6,7 @@
 //#include "jack.h"
 
 using node::ObjectWrap;
+using v8::Function;
 using v8::FunctionTemplate;
 using v8::Handle;
 using v8::Local;
@@ -20,20 +21,26 @@ class Client : public ObjectWrap {
 
   private:
 
+    // node constructor
+
+    Persistent<Object> self;
+
     static NAN_METHOD(New) {
       NanScope();
-      Client * obj = new Client(args.This(), *NanUtf8String(args[0]));
-      obj->Wrap(args.This());
-      NanReturnValue(args.This());
+      Local<Object> self = args.This();
+      Client * obj = new Client(* NanUtf8String(args[0]));
+      obj->Wrap(self);
+      self->Set(NanNew("onclient"), NanUndefined());
+      self->Set(NanNew("onport"),   NanUndefined());
+      NanAssignPersistent(obj->self, self);
+      NanReturnValue(self);
     }
+
+    // actual constructor and jack connection
 
     jack_client_t * client;
 
-    Local<Object> _this;
-
-    Client (Local<Object> self, const char * name) {
-
-      _this = self;
+    Client (const char * name) {
 
       client = jack_client_open(name, JackNullOption, NULL);
 
@@ -49,21 +56,22 @@ class Client : public ObjectWrap {
 
     }
 
+    // destructor
+
     ~Client () {
       jack_client_close(client);
     }
+
+    // static callbacks for jack
 
     static void client_registration_callback
       ( const char * name
       , int          reg
       , void       * client_ptr)
     {
-      //v8::FunctionCallbackInfo<v8::Value> argv[2] =
-      Handle<Value> argv[2] =
-      { NanNew(reg ? "client-registered"
-                   : "client-unregistered")
-      , NanNew(name) };
-      static_cast<Client*>(client_ptr)->emitEvent(argv);
+      static_cast<Client*>(client_ptr)->emitEvent(
+        reg ? "client-registered"
+            : "client-unregistered", name);
     }
 
     static void port_registration_callback
@@ -71,42 +79,34 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr)
     {
-      Handle<Value> argv[2] =
-      { NanNew(reg ? "port-registered"
-                   : "port-unregistered")
-      , NanUndefined() };
-      static_cast<Client*>(client_ptr)->emitEvent(argv);
+      static_cast<Client*>(client_ptr)->emitEvent(
+        reg ? "port-registered"
+            : "port-unregistered", "");
     }
 
   public:
 
+    // create prototype
+
     static void Init() {
-      Local<FunctionTemplate> t =
-        NanNew<FunctionTemplate>(Client::New);
+      Local<FunctionTemplate> t = NanNew<FunctionTemplate>(Client::New);
       NanAssignPersistent(constructor, t);
       t->SetClassName(NanNew("Client"));
       t->InstanceTemplate()->SetInternalFieldCount(1);
     }
 
-    void emitEvent (Handle<Value> * argv) {
-      NanScope();
-      NanMakeCallback(_this, "emit", 2, argv);
-      NanReturnUndefined();
+    // event emit intermediary
+    // needs to be public for static_casted clients to work
+
+    void emitEvent (const char * name, const char * arg) {
+      fprintf(stderr, "emit %s %s", name, arg);
     }
 
 };
 
-//void * client_registered ( const char * name
-                         //, int          reg
-                         //, void       * client_ptr ) {
-  //printf("CLIENT REGISTERED 1");
-  //static_cast<Client*>(client_ptr)->emitEvent("client-registered");
-//}
-
 void init (Handle<Object> exports) {
   Client::Init();
-  Local<FunctionTemplate> handle = NanNew(constructor);
-  exports->Set(NanNew("Client"), handle->GetFunction());
+  exports->Set(NanNew("Client"), NanNew(constructor)->GetFunction());
 }
 
 NODE_MODULE(jack, init)

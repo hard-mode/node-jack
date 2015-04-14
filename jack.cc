@@ -82,7 +82,7 @@ class Client : public ObjectWrap {
 
       NanScope();
       Local<Object> self   = NanNew(args->c->self);
-      Local<Value>  argv[] = { NanNew(args->evt), NanNew(args->arg) };
+      Local<Value>  argv[] = { NanNew(args->evt), NanNew((char *)args->arg) };
       Local<Function>::Cast(self->Get(NanNew("emit")))->Call(self, 2, argv);
 
       delete baton;
@@ -118,9 +118,10 @@ class Client : public ObjectWrap {
       , int          reg
       , void       * client_ptr )
     {
-      callback( client_ptr
-              , reg ? "client-registered" : "client-unregistered"
-              , const_cast<char *>(name));
+      callback
+        ( client_ptr
+        , reg ? "client-registered" : "client-unregistered"
+        , const_cast<char *>(name));
     }
 
     static void port_registration_callback
@@ -128,9 +129,11 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr )
     {
-      callback( client_ptr
-              , reg ? "port-registered" : "port-unregistered"
-              , NULL);
+      callback
+        ( client_ptr
+        , reg ? "port-registered" : "port-unregistered"
+        , const_cast<char *>(jack_port_name(jack_port_by_id(
+            static_cast<Client*>(client_ptr)->client, port))));
     }
 
   public:

@@ -88,7 +88,29 @@ class Client : public ObjectWrap {
       delete baton;
       args->c->baton = NULL;
       uv_sem_post(&(args->c->semaphore));
-      return;
+    }
+
+    static void callback
+      ( void           * client_ptr
+      , uv_callback_args args)
+    {
+      Client * c = static_cast<Client*>(client_ptr);
+
+      if (c->baton) {
+        uv_sem_wait(&(c->semaphore));
+        uv_sem_destroy(&(c->semaphore));
+      }
+
+      c->baton = new uv_work_t();
+      if (uv_sem_init(&(c->semaphore), 0) < 0) return;
+
+      c->baton->data = (void *)(&args);
+      uv_queue_work(
+        uv_default_loop(), c->baton,
+        Client::uv_work_plug, c->uv_emit);
+
+      uv_sem_wait(&(c->semaphore));
+      uv_sem_destroy(&(c->semaphore));
     }
 
     static void client_registration_callback
@@ -97,27 +119,11 @@ class Client : public ObjectWrap {
       , void       * client_ptr )
     {
 
-      Client * c = static_cast<Client*>(client_ptr);
-
-      if (c->baton) {
-        uv_sem_wait(&(c->semaphore));
-        uv_sem_destroy(&(c->semaphore));
-      }
-
-      c->baton = new uv_work_t();
-      if (uv_sem_init(&(c->semaphore), 0) < 0) return;
-
       uv_callback_args args =
-        { c
+        { static_cast<Client*>(client_ptr)
         , reg ? "client-registered" : "client-unregistered"
         , const_cast<char *>(name) };
-      c->baton->data = (void *)(&args);
-      uv_queue_work(
-        uv_default_loop(), c->baton,
-        Client::uv_work_plug, c->uv_emit);
-
-      uv_sem_wait(&(c->semaphore));
-      uv_sem_destroy(&(c->semaphore));
+      callback(client_ptr, args);
 
     }
 
@@ -126,27 +132,13 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr )
     {
-      Client * c = static_cast<Client*>(client_ptr);
-
-      if (c->baton) {
-        uv_sem_wait(&(c->semaphore));
-        uv_sem_destroy(&(c->semaphore));
-      }
-
-      c->baton = new uv_work_t();
-      if (uv_sem_init(&(c->semaphore), 0) < 0) return;
 
       uv_callback_args args =
-        { c
+        { static_cast<Client*>(client_ptr)
         , reg ? "port-registered" : "port-unregistered"
         , NULL };
-      c->baton->data = (void *)(&args);
-      uv_queue_work(
-        uv_default_loop(), c->baton,
-        Client::uv_work_plug, c->uv_emit);
+      callback(client_ptr, args);
 
-      uv_sem_wait(&(c->semaphore));
-      uv_sem_destroy(&(c->semaphore));
     }
 
   public:

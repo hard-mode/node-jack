@@ -92,18 +92,18 @@ class Client : public ObjectWrap {
 
     static void callback
       ( void           * client_ptr
-      , uv_callback_args args)
+      , const char     * event
+      , void           * arg)
     {
       Client * c = static_cast<Client*>(client_ptr);
-
       if (c->baton) {
         uv_sem_wait(&(c->semaphore));
         uv_sem_destroy(&(c->semaphore));
       }
-
       c->baton = new uv_work_t();
       if (uv_sem_init(&(c->semaphore), 0) < 0) return;
 
+      uv_callback_args args = { c, event, arg };
       c->baton->data = (void *)(&args);
       uv_queue_work(
         uv_default_loop(), c->baton,
@@ -118,13 +118,9 @@ class Client : public ObjectWrap {
       , int          reg
       , void       * client_ptr )
     {
-
-      uv_callback_args args =
-        { static_cast<Client*>(client_ptr)
-        , reg ? "client-registered" : "client-unregistered"
-        , const_cast<char *>(name) };
-      callback(client_ptr, args);
-
+      callback( client_ptr
+              , reg ? "client-registered" : "client-unregistered"
+              , const_cast<char *>(name));
     }
 
     static void port_registration_callback
@@ -132,13 +128,9 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr )
     {
-
-      uv_callback_args args =
-        { static_cast<Client*>(client_ptr)
-        , reg ? "port-registered" : "port-unregistered"
-        , NULL };
-      callback(client_ptr, args);
-
+      callback(client_ptr
+              , reg ? "port-registered" : "port-unregistered"
+              , NULL);
     }
 
   public:

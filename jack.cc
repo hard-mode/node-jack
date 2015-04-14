@@ -76,15 +76,14 @@ class Client : public ObjectWrap {
 
     static void uv_emit
       ( uv_work_t * baton
-      , int status )
+      , int         status )
     {
       uv_callback_args * args = (uv_callback_args *) baton->data;
 
       NanScope();
-      Local<Object> self = NanNew(args->c->self);
-      Local<Value> f = self->Get(NanNew("emit"));
-      Local<Value> argv[] = { NanNew(args->evt), NanUndefined() };
-      Local<Function>::Cast(f)->Call(self, 2, argv);
+      Local<Object> self   = NanNew(args->c->self);
+      Local<Value>  argv[] = { NanNew(args->evt), NanNew(args->arg) };
+      Local<Function>::Cast(self->Get(NanNew("emit")))->Call(self, 2, argv);
 
       delete baton;
       args->c->baton = NULL;
@@ -108,8 +107,10 @@ class Client : public ObjectWrap {
       c->baton = new uv_work_t();
       if (uv_sem_init(&(c->semaphore), 0) < 0) return;
 
-      uv_callback_args args = { c, reg ? "client-registered"
-                                       : "client-unregistered", NULL };
+      uv_callback_args args =
+        { c
+        , reg ? "client-registered" : "client-unregistered"
+        , const_cast<char *>(name) };
       c->baton->data = (void *)(&args);
       uv_queue_work(
         uv_default_loop(), c->baton,
@@ -125,7 +126,27 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr )
     {
-      fprintf(stderr, "port reg callback");
+      Client * c = static_cast<Client*>(client_ptr);
+
+      if (c->baton) {
+        uv_sem_wait(&(c->semaphore));
+        uv_sem_destroy(&(c->semaphore));
+      }
+
+      c->baton = new uv_work_t();
+      if (uv_sem_init(&(c->semaphore), 0) < 0) return;
+
+      uv_callback_args args =
+        { c
+        , reg ? "port-registered" : "port-unregistered"
+        , NULL };
+      c->baton->data = (void *)(&args);
+      uv_queue_work(
+        uv_default_loop(), c->baton,
+        Client::uv_work_plug, c->uv_emit);
+
+      uv_sem_wait(&(c->semaphore));
+      uv_sem_destroy(&(c->semaphore));
     }
 
   public:

@@ -1,15 +1,13 @@
 var jack = require('../index.js');
-console.log("1. JACK", jack);
+console.log("\n1. JACK", jack);
 
-console.log("2. Class", jack.Client)
+console.log("\n2. Class", jack.Client)
 
-console.log("3. Proto", jack.Client.prototype)
+console.log("\n3. Proto", jack.Client.prototype)
 
 var client = new jack.Client('test');
-console.log("4. Instance", client);
-
-process.stdin.resume();
-function cb () { console.log ("CALLBACK", this, arguments ) }
+console.log("\n4. Instance", client);
+console.log(client.getPorts());
 
 client.on('client-registered', function () {
   console.log("Client registered", arguments)
@@ -37,6 +35,6 @@ client.on('disconnect', function () {
   console.log("Ports disconnected", arguments)
 });
 
-console.log("5. Callbacks");
+console.log("\n5. Callbacks");
 
 require('child_process').spawn('jack_simple_client');

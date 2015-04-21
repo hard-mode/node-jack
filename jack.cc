@@ -7,12 +7,14 @@
 //#include "jack.h"
 
 using node::ObjectWrap;
+using v8::Array;
 using v8::Context;
 using v8::Function;
 using v8::FunctionTemplate;
 using v8::Handle;
 using v8::Local;
 using v8::Object;
+using v8::ObjectTemplate;
 using v8::Persistent;
 using v8::String;
 using v8::Value;
@@ -25,11 +27,11 @@ class Client : public ObjectWrap {
 
     // node constructor
 
-    Persistent<Object>  self;
+    Persistent<Object> self;
 
     static NAN_METHOD(New) {
       NanScope();
-      Local<Object> self = args.This();
+      Local<Object> self = args.Holder();
       Client * c = new Client(* NanUtf8String(args[0]));
       c->Wrap(self);
       NanAssignPersistent(c->self, self);
@@ -65,19 +67,47 @@ class Client : public ObjectWrap {
       jack_client_close(client);
     }
 
-    // port connect and disconnect methods
+    // port methods
     static NAN_METHOD(Connect) {
       NanScope();
       Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
-      jack_connect(c->client, *NanUtf8String(args[0]), *NanUtf8String(args[1]));
+      jack_connect(c->client,
+        *NanUtf8String(args[0]), *NanUtf8String(args[1]));
       NanReturnUndefined();
     }
 
     static NAN_METHOD(Disconnect) {
       NanScope();
       Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
-      jack_disconnect(c->client, *NanUtf8String(args[0]), *NanUtf8String(args[1]));
+      jack_disconnect(c->client,
+        *NanUtf8String(args[0]), *NanUtf8String(args[1]));
       NanReturnUndefined();
+    }
+
+    static NAN_METHOD(GetPorts) {
+      NanScope();
+      Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
+      const char ** ports;
+      size_t        count;
+      uint32_t      i;
+
+      ports = jack_get_ports(c->client, NULL, JACK_DEFAULT_AUDIO_TYPE, 0);
+      count = 0;
+      while (ports[count] != NULL) count++;
+      Local<Array> a = NanNew<Array>(count);
+      for (i = 0; i < count; i++) a->Set(i, NanNew(ports[i]));
+
+      ports = jack_get_ports(c->client, NULL, JACK_DEFAULT_MIDI_TYPE, 0);
+      count = 0;
+      while (ports[count] != NULL) count++;
+      Local<Array> m = NanNew<Array>(count);
+      for (i = 0; i < count; i++) m->Set(i, NanNew(ports[i]));
+
+      Local<Object> p = NanNew<Object>();
+      p->Set(NanNew("audio"), a);
+      p->Set(NanNew("midi"),  m);
+
+      NanReturnValue(p);
     }
 
     // static callbacks for jack events
@@ -149,11 +179,12 @@ class Client : public ObjectWrap {
       , int            reg
       , void         * client_ptr )
     {
+      Client * c = static_cast<Client*>(client_ptr);
       callback<char *>
         ( client_ptr
         , reg ? "port-registered" : "port-unregistered"
-        , const_cast<char *>(jack_port_name(jack_port_by_id(
-            static_cast<Client*>(client_ptr)->client, port))));
+        , const_cast<char *>(
+            jack_port_name(jack_port_by_id(c->client, port))));
     }
 
     static void port_connect_callback
@@ -181,12 +212,18 @@ class Client : public ObjectWrap {
     // create prototype
 
     static void Init() {
+      NanScope();
+
       Local<FunctionTemplate> t = NanNew<FunctionTemplate>(Client::New);
       NanAssignPersistent(constructor, t);
       t->SetClassName(NanNew("Client"));
       t->InstanceTemplate()->SetInternalFieldCount(1);
       NODE_SET_PROTOTYPE_METHOD(t, "connect",    Connect);
       NODE_SET_PROTOTYPE_METHOD(t, "disconnect", Disconnect);
+      NODE_SET_PROTOTYPE_METHOD(t, "getPorts",   GetPorts);
+
+      //Local<ObjectTemplate>   p = t->PrototypeTemplate();
+      //p->SetAccessor(NanNew("ports"), GetPorts);
     }
 
 };

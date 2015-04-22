@@ -21,6 +21,15 @@ using v8::Value;
 
 static Persistent<FunctionTemplate> constructor;
 
+//template <typename T>
+//class CallbackWorker : public NanAsyncWorker {};
+
+//class ClientRegistrationCallbackWorker : CallbackWorker<JackClientRegistrationCallback> {};
+
+//class PortRegistrationCallbackWorker : CallbackWorker<JackPortRegistrationCallback> {};
+
+//class PortConnectCallbackWorker : CallbackWorker<JackPortConnectCallback> {};
+
 class Client : public ObjectWrap {
 
   private:
@@ -84,28 +93,46 @@ class Client : public ObjectWrap {
       NanReturnUndefined();
     }
 
-    static NAN_METHOD(GetPorts) {
-      NanScope();
-      Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
+    Handle<Array> get_ports
+      ( const char  * port_name_pattern
+      , const char  * type_name_pattern
+      , unsigned long flags )
+    {
+      NanEscapableScope();
+
+      Handle<Array> a;
       const char ** ports;
       size_t        count;
       uint32_t      i;
 
-      ports = jack_get_ports(c->client, NULL, JACK_DEFAULT_AUDIO_TYPE, 0);
-      count = 0;
-      while (ports[count] != NULL) count++;
-      Local<Array> a = NanNew<Array>(count);
-      for (i = 0; i < count; i++) a->Set(i, NanNew(ports[i]));
+      ports = jack_get_ports(client, port_name_pattern, type_name_pattern, flags);
+      if (ports == NULL) {
+        return NanEscapeScope(NanNew<Array>(0)); 
+      } else {
+        count = 0;
+        while (ports[count] != NULL) count++;
+        a = NanNew<Array>(count);
+        for (i = 0; i < count; i++) a->Set(i, NanNew(ports[i]));
+      }
 
-      ports = jack_get_ports(c->client, NULL, JACK_DEFAULT_MIDI_TYPE, 0);
-      count = 0;
-      while (ports[count] != NULL) count++;
-      Local<Array> m = NanNew<Array>(count);
-      for (i = 0; i < count; i++) m->Set(i, NanNew(ports[i]));
+      return NanEscapeScope(a);
+    }
 
+    static NAN_METHOD(GetPorts) {
+      NanScope();
+
+      Client      * c = ObjectWrap::Unwrap<Client>(args.Holder());
       Local<Object> p = NanNew<Object>();
+
+      Local<Object> a = NanNew<Object>();
+      a->Set(NanNew("in"),  c->get_ports(NULL, JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput));
+      a->Set(NanNew("out"), c->get_ports(NULL, JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput));
       p->Set(NanNew("audio"), a);
-      p->Set(NanNew("midi"),  m);
+
+      Local<Object> m = NanNew<Object>();
+      m->Set(NanNew("in"),  c->get_ports(NULL, JACK_DEFAULT_MIDI_TYPE, JackPortIsInput));
+      m->Set(NanNew("out"), c->get_ports(NULL, JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput));
+      p->Set(NanNew("midi"), m);
 
       NanReturnValue(p);
     }

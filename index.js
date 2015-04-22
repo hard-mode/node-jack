@@ -1,4 +1,4 @@
-var jack     = require(__dirname + '/build/Release/jack.node')
+var jack     = require(__dirname + '/build/Debug/jack.node')
   , events   = require('events')
   //, inherits = require('util').inherits;
 

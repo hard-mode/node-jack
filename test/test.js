@@ -7,7 +7,10 @@ console.log("\n3. Proto", jack.Client.prototype)
 
 var client = new jack.Client('test');
 console.log("\n4. Instance", client);
-console.log(client.getPorts());
+console.log(client.registerAudioInput("audio-in"));
+console.log(client.registerAudioOutput("audio-out"));
+console.log(client.registerMIDIInput("midi-in"));
+console.log(client.registerMIDIOutput("midi-out"));
 
 client.on('client-registered', function () {
   console.log("Client registered", arguments)

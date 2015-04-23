@@ -1,8 +1,7 @@
-var jack     = require(__dirname + '/build/Debug/jack.node')
-  , events   = require('events')
+var jack = require(__dirname + '/build/Debug/jack.node');
   //, inherits = require('util').inherits;
 
-inherits(jack.Client, events.EventEmitter);
+inherits(jack.Client, require('eventemitter2').EventEmitter2);
 module.exports = jack;
 
 function inherits(target, source) {

@@ -3,4 +3,4 @@ build/
 node_modules/
 *.swp
 *.swo
-npm-debug.log
+npm-debug.log*

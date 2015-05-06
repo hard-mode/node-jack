@@ -2,6 +2,7 @@
 
 #include <nan.h>
 #include <node.h>
+#include <queue>
 #include <uv.h>
 #include <vector>
 #include <jack/jack.h>
@@ -11,12 +12,14 @@
 #define MAX_PORTS 64
 
 using node::ObjectWrap;
+using std::queue;
 using std::vector;
 using v8::Array;
 using v8::Context;
 using v8::Function;
 using v8::FunctionTemplate;
 using v8::Handle;
+using v8::Integer;
 using v8::Local;
 using v8::Number;
 using v8::Object;
@@ -43,7 +46,7 @@ class Client : public ObjectWrap {
       }
 
       Local<Object> self = args.Holder();
-      Client      * c    = new Client(* NanUtf8String(args[0]));
+      Client      * c    = new Client(*NanUtf8String(args[0]));
       c->Wrap(self);
       NanAssignPersistent(c->self, self);
 
@@ -190,7 +193,7 @@ class Client : public ObjectWrap {
     class MidiEvent {
       public:
         jack_nframes_t frame;
-        unsigned char data[3];
+        unsigned char  data[3];
 
         MidiEvent () {};
         MidiEvent(jack_nframes_t _frame, unsigned char* _data) {
@@ -200,8 +203,8 @@ class Client : public ObjectWrap {
     };
 
     struct midi_port_t {
-      jack_port_t     * port;
-      vector<MidiEvent> events;
+      jack_port_t    * port;
+      queue<MidiEvent> events;
     };
 
     vector<midi_port_t> midi_outputs;
@@ -224,24 +227,37 @@ class Client : public ObjectWrap {
     static NAN_METHOD(RegisterMIDIOutput) {
       NanScope();
 
-      Client      * c = ObjectWrap::Unwrap<Client>(args.Holder());
-
-      midi_port_t   p = {
+      Client    * c = ObjectWrap::Unwrap<Client>(args.Holder());
+      midi_port_t p = {
         jack_port_register(
           c->client, *NanUtf8String(args[0]),
           JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0),
-        vector<MidiEvent>()
+        queue<MidiEvent>()
       };
       c->midi_outputs.push_back(p);
 
       NanReturnValue(NanNew<Number>(c->midi_outputs.size()-1));
     }
 
+    static NAN_METHOD(SendMIDI) {
+      NanScope();
+
+      Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
+      midi_port_t * m = &c->midi_outputs[args[0]->Uint32Value()];
+      uint32_t time = args[0]->Uint32Value();
+      unsigned char msg[] = { (unsigned char)args[1]->Uint32Value()
+                            , (unsigned char)args[2]->Uint32Value()
+                            , (unsigned char)args[3]->Uint32Value() };
+      m->events.push(MidiEvent(time, msg));
+
+      NanReturnUndefined();
+    }
+
     // for manually hooking into libuv event loop
 
     uv_work_t * baton;
-    uv_work_t * process_baton;
     uv_sem_t    semaphore;
+    uv_work_t * process_baton;
     uv_sem_t    process_semaphore;
     static void uv_work_plug (uv_work_t * task) {}
 
@@ -269,10 +285,47 @@ class Client : public ObjectWrap {
 
       if (uv_sem_init(&process_semaphore, 0) < 0) { perror("uv_sem_init"); return 1; }
 
-      void * midi_out_buffer;
+      // send queued midi events to corresponding output ports
+      void           * midi_out_buffer;
+      MidiEvent      * evt = NULL;
+      unsigned char  * buf;
+      jack_nframes_t   start = jack_last_frame_time(client);
+
       for (size_t i = 0; i < midi_outputs.size(); i++) {
+
+        // get and clear midi output buffer
         midi_out_buffer = jack_port_get_buffer(midi_outputs[i].port, nframes);
         jack_midi_clear_buffer(midi_out_buffer);
+
+        // if there are no events in the queue move on to next port
+        // since calling front() on an empty queue is undefined
+        if (midi_outputs[i].events.empty()) continue;
+
+        // get first event in queue
+        evt = &midi_outputs[i].events.front();
+
+        for (jack_nframes_t j = 0; j < nframes; j++) {
+
+          // previous iterations of the loop may leave the queue empty
+          if (evt == NULL) break;
+
+          if (evt->frame <= start + j) {
+            // write frame to output buffer
+            buf    = jack_midi_event_reserve(midi_out_buffer, j, 3);
+            buf[0] = evt->data[0];
+            buf[1] = evt->data[1];
+            buf[2] = evt->data[2];
+
+            // pop queue and get next event
+            midi_outputs[i].events.pop();
+            evt = midi_outputs[i].events.empty()
+              ? NULL
+              : &midi_outputs[i].events.front();
+
+          }
+
+        }
+
       }
 
       process_callback_args args = { this, nframes };
@@ -409,6 +462,7 @@ class Client : public ObjectWrap {
       NODE_SET_PROTOTYPE_METHOD(t, "registerMIDIOutput",  RegisterMIDIOutput);
       NODE_SET_PROTOTYPE_METHOD(t, "registerAudioInput",  RegisterAudioInput);
       NODE_SET_PROTOTYPE_METHOD(t, "registerAudioOutput", RegisterAudioOutput);
+      NODE_SET_PROTOTYPE_METHOD(t, "sendMidi",            SendMIDI);
 
       //Local<ObjectTemplate>   p = t->PrototypeTemplate();
       //p->SetAccessor(NanNew("ports"), GetPorts);

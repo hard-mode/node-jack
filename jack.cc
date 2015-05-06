@@ -3,18 +3,22 @@
 #include <nan.h>
 #include <node.h>
 #include <uv.h>
+#include <vector>
 #include <jack/jack.h>
+#include <jack/types.h>
 #include <jack/midiport.h>
 
 #define MAX_PORTS 64
 
 using node::ObjectWrap;
+using std::vector;
 using v8::Array;
 using v8::Context;
 using v8::Function;
 using v8::FunctionTemplate;
 using v8::Handle;
 using v8::Local;
+using v8::Number;
 using v8::Object;
 using v8::ObjectTemplate;
 using v8::Persistent;
@@ -22,28 +26,6 @@ using v8::String;
 using v8::Value;
 
 static Persistent<FunctionTemplate> constructor;
-
-//template <typename T>
-//class CallbackWorker : public NanAsyncWorker {};
-
-//class ClientRegistrationCallbackWorker : CallbackWorker<JackClientRegistrationCallback> {};
-
-//class PortRegistrationCallbackWorker : CallbackWorker<JackPortRegistrationCallback> {};
-
-//class PortConnectCallbackWorker : CallbackWorker<JackPortConnectCallback> {};
-
-
-//template <typename T>
-//class EmitEventWorker : public NanAsyncWorker {
-  //void HandleOKCallback () {
-    //NanScope();
-    //Local<Object> self   = NanNew(args->c->self);
-    //Local<Value>  argv[] = { NanNew(args->evt), NanNew((T)args->arg) };
-    //Local<Function>::Cast(self->Get(NanNew("emit")))->Call(self, 2, argv);
-  //}
-
-  //Handle<Object> 
-//};
 
 class Client : public ObjectWrap {
 
@@ -74,8 +56,6 @@ class Client : public ObjectWrap {
     jack_client_t * client;
 
     Client (const char * name) {
-
-      midi_output_count = 0;
 
       client = jack_client_open(name, JackNullOption, NULL);
 
@@ -173,7 +153,7 @@ class Client : public ObjectWrap {
       NanReturnValue(p);
     }
 
-    // create ports
+    // audio io
 
     static NAN_METHOD(RegisterAudioInput) {
       NanScope();
@@ -205,8 +185,26 @@ class Client : public ObjectWrap {
       NanReturnValue(p);
     }
 
-    int           midi_output_count;
-    jack_port_t * midi_outputs [MAX_PORTS];
+    // midi io
+
+    class MidiEvent {
+      public:
+        jack_nframes_t frame;
+        unsigned char data[3];
+
+        MidiEvent () {};
+        MidiEvent(jack_nframes_t _frame, unsigned char* _data) {
+          frame = _frame;
+          memcpy(data, _data, sizeof(unsigned char)*3);
+        }
+    };
+
+    struct midi_port_t {
+      jack_port_t     * port;
+      vector<MidiEvent> events;
+    };
+
+    vector<midi_port_t> midi_outputs;
     
     static NAN_METHOD(RegisterMIDIInput) {
       NanScope();
@@ -228,13 +226,15 @@ class Client : public ObjectWrap {
 
       Client      * c = ObjectWrap::Unwrap<Client>(args.Holder());
 
-      c->midi_outputs[c->midi_output_count] = jack_port_register(
-        c->client, *NanUtf8String(args[0]),
-        JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+      midi_port_t   p = {
+        jack_port_register(
+          c->client, *NanUtf8String(args[0]),
+          JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0),
+        vector<MidiEvent>()
+      };
+      c->midi_outputs.push_back(p);
 
-      c->midi_output_count++;
-
-      NanReturnValue(NanNew(c->midi_output_count-1));
+      NanReturnValue(NanNew<Number>(c->midi_outputs.size()-1));
     }
 
     // for manually hooking into libuv event loop
@@ -270,8 +270,8 @@ class Client : public ObjectWrap {
       if (uv_sem_init(&process_semaphore, 0) < 0) { perror("uv_sem_init"); return 1; }
 
       void * midi_out_buffer;
-      for (int i = 0; i < midi_output_count; i++) {
-        midi_out_buffer = jack_port_get_buffer(midi_outputs[i], nframes);
+      for (size_t i = 0; i < midi_outputs.size(); i++) {
+        midi_out_buffer = jack_port_get_buffer(midi_outputs[i].port, nframes);
         jack_midi_clear_buffer(midi_out_buffer);
       }
 

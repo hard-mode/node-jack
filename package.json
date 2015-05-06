@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node test/test.js"
+    "test": "node test/test.js",
+    "conf": "PYTHON=python2 node-gyp configure",
+    "build": "PYTHON=python2 node-gyp build && npm test",
+    "rebuild": "PYTHON=python2 node-gyp rebuild && npm test"
   },
   "author": "",
   "license": "ISC",

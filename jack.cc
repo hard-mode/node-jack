@@ -96,7 +96,17 @@ class Client : public ObjectWrap {
     }
 
     ~Client () {
-      jack_client_close(client);
+      if (client) jack_client_close(client);
+    }
+
+    // close client
+
+    static NAN_METHOD(Close) {
+      NanScope();
+      Client * c = ObjectWrap::Unwrap<Client>(args.Holder());
+      jack_client_close(c->client);
+      c->client = NULL;
+      NanReturnUndefined();
     }
 
     // connect and disconnect ports
@@ -230,7 +240,9 @@ class Client : public ObjectWrap {
     // for manually hooking into libuv event loop
 
     uv_work_t * baton;
+    uv_work_t * process_baton;
     uv_sem_t    semaphore;
+    uv_sem_t    process_semaphore;
     static void uv_work_plug (uv_work_t * task) {}
 
     // jack process callback
@@ -249,13 +261,13 @@ class Client : public ObjectWrap {
 
     int _process_callback ( jack_nframes_t nframes ) {
 
-      if (baton) {
-        uv_sem_wait(&semaphore);
-        uv_sem_destroy(&semaphore);
+      if (process_baton) {
+        uv_sem_wait(&process_semaphore);
+        uv_sem_destroy(&process_semaphore);
       }
-      baton = new uv_work_t();
+      process_baton = new uv_work_t();
 
-      if (uv_sem_init(&semaphore, 0) < 0) { perror("uv_sem_init"); return 1; }
+      if (uv_sem_init(&process_semaphore, 0) < 0) { perror("uv_sem_init"); return 1; }
 
       void * midi_out_buffer;
       for (int i = 0; i < midi_output_count; i++) {
@@ -264,10 +276,10 @@ class Client : public ObjectWrap {
       }
 
       process_callback_args args = { this, nframes };
-      baton->data = (void *)(&args);
-      uv_queue_work(uv_default_loop(), baton, uv_work_plug, _process_callback_uv);
-      uv_sem_wait(&semaphore);
-      uv_sem_destroy(&semaphore);
+      process_baton->data = (void *)(&args);
+      uv_queue_work(uv_default_loop(), process_baton, uv_work_plug, _process_callback_uv);
+      uv_sem_wait(&process_semaphore);
+      uv_sem_destroy(&process_semaphore);
 
       return 0;
     };
@@ -282,8 +294,8 @@ class Client : public ObjectWrap {
       // TODO write queued midi events to midi output port buffer
 
       delete baton;
-      args->c->baton = NULL;
-      uv_sem_post(&(args->c->semaphore));
+      args->c->process_baton = NULL;
+      uv_sem_post(&(args->c->process_semaphore));
       NanReturnUndefined();
     }
 
@@ -389,6 +401,7 @@ class Client : public ObjectWrap {
       NanAssignPersistent(constructor, t);
       t->SetClassName(NanNew("Client"));
       t->InstanceTemplate()->SetInternalFieldCount(1);
+      NODE_SET_PROTOTYPE_METHOD(t, "close",               Close);
       NODE_SET_PROTOTYPE_METHOD(t, "connect",             Connect);
       NODE_SET_PROTOTYPE_METHOD(t, "disconnect",          Disconnect);
       NODE_SET_PROTOTYPE_METHOD(t, "getPorts",            GetPorts);

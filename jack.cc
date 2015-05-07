@@ -276,7 +276,6 @@ class Client : public ObjectWrap {
     }
 
     int _process_callback ( jack_nframes_t nframes ) {
-
       if (process_baton) {
         uv_sem_wait(&process_semaphore);
         uv_sem_destroy(&process_semaphore);
@@ -365,12 +364,17 @@ class Client : public ObjectWrap {
       ( uv_work_t * baton
       , int         status )
     {
-      event_args * args = (event_args *) baton->data;
-
       NanScope();
+
+      event_args * args = (event_args *) baton->data;
       Local<Object> self   = NanNew(args->c->self);
       Local<Value>  argv[] = { NanNew(args->evt), NanNew((T)args->arg) };
-      Local<Function>::Cast(self->Get(NanNew("emit")))->Call(self, 2, argv);
+      NanMakeCallback(self, "emit", 2, argv);
+      //NanMakeCallback(NanGetCurrentContext()->Global(),
+                      //Local<Function>::Cast(self->Get(NanNew("emit"))),
+                      ////self->Get(NanNew("emit")),
+                      //2, argv);
+      //Local<Function>::Cast(self->Get(NanNew("emit")))->Call(self, 2, argv);
 
       delete baton;
       args->c->baton = NULL;

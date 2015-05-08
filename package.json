@@ -5,14 +5,17 @@
   "main": "index.js",
   "scripts": {
     "test": "node test/test.js",
-    "conf": "PYTHON=python2 node-gyp configure",
-    "build": "PYTHON=python2 node-gyp build",
-    "rebuild": "PYTHON=python2 node-gyp rebuild"
+    "conf-debug": "PYTHON=python2 node-gyp configure --debug",
+    "build-debug": "PYTHON=python2 node-gyp build --debug",
+    "rebuild-debug": "PYTHON=python2 node-gyp rebuild --debug",
+    "conf-release": "PYTHON=python2 node-gyp configure",
+    "build-release": "PYTHON=python2 node-gyp build",
+    "rebuild-release": "PYTHON=python2 node-gyp rebuild"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "eventemitter2": "^0.4.14",
-    "nan": "^1.7.0"
+    "nan": "^1.8.0"
   }
 }
